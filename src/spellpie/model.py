@@ -50,7 +50,7 @@ class SpellingModel(object):
         return self.model[self._case(word)] if self.in_model(word) else 0
 
     def get_best_candidate(self, word_candidates):
-        return max((self.get_probability(w), w) for w in word_candidates if self.in_model(w))[1]
+        return max((self.get_probability(w), w) for w in word_candidates if self.in_model(w) or (0, None))[1]
 
     def in_model(self, word):
         return self._case(word) in self.model
