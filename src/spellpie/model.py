@@ -47,13 +47,13 @@ class SpellingModel(object):
     def get_probability(self, word):
         if not self.model:
             raise ValueError('Missing model')
-        return self.model[self._case(word)]
+        return self.model[self._case(word)] if self.in_model(word) else 0
 
     def get_best_candidate(self, word_candidates):
-        return max((self.get_probability(w), w) for w in word_candidates)[1]
+        return max((self.get_probability(w), w) for w in word_candidates if self.in_model(w))[1]
 
     def in_model(self, word):
-        return word in self.model
+        return self._case(word) in self.model
 
     def export_model(self, fp, readable=False):
         if readable:
