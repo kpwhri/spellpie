@@ -21,17 +21,20 @@ def build_spelling_model(it):
                 bigrams[(words[i-1], words[i])] += 1
             if i > 1:
                 trigrams[(words[i-2], words[i-1], words[i])] += 1
+    lm = TrigramLanguageModel(unigrams, bigrams, trigrams)
+    return lm
 
 
 class TrigramLanguageModel:
 
     def __init__(self, unigram, bigram, trigram):
+        """Frequencies"""
         self.unigram = SmoothedLanguageModel(unigram)
         self.bigram = SmoothedLanguageModel(bigram)
         self.trigram = SmoothedLanguageModel(trigram)
 
     def generate_candidates(self, word):
-        self._edits(word)
+        return self._edits(word)
 
     def _edits(self, word):
         """All edits that are one edit away from `word`."""
@@ -45,8 +48,17 @@ class TrigramLanguageModel:
 
     def edits(self, word):
         """All edits that are two edits away from `word`."""
-
         return (e2 for e1 in self._edits(word) for e2 in self._edits(e1))
+
+    def __getitem__(self, item):
+        if isinstance(item, tuple):
+            if len(item) == 1:
+                return self.unigram[item]
+            if len(item) == 2:
+                return self.bigram[item]
+            if len(item) == 3:
+                return self.trigram[item]
+        return self.unigram[item]
 
 
 class SmoothedLanguageModel:
@@ -65,3 +77,24 @@ class SmoothedLanguageModel:
             return self.smoothed_prob
 
 
+def viterbi(sentence, lm):
+    history = []
+    for i, word in enumerate(sentence):
+        new_history = []
+        for candidate in lm.generate_candidates(word) | {word}:
+            if not candidate:
+                continue
+            candidate_prob = lm[candidate]
+            if i == 0:  # populate history
+                new_history.append(([candidate], candidate_prob))
+            else:
+                best_path = None
+                best_prob = 0
+                for curr_path, prob in history:
+                    curr_prob = prob + lm[(curr_path[-1], candidate)] + candidate_prob
+                    if not best_path or curr_prob > best_prob:
+                        best_path = curr_path
+                        best_prob = curr_prob
+                new_history.append((best_path + [candidate], best_prob))
+        history = new_history
+    return sorted(history, key=lambda x: -x[1])
