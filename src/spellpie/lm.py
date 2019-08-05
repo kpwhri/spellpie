@@ -81,10 +81,12 @@ def viterbi(sentence, lm):
     history = []
     for i, word in enumerate(sentence):
         new_history = []
-        for candidate in lm.generate_candidates(word) | {word}:
+        for ci, candidate in enumerate([word] + list(lm.generate_candidates(word))):
             if not candidate:
                 continue
             candidate_prob = lm[candidate]
+            if ci == 0:
+                candidate_prob += 0.000001  # prefer the current word to equal probability options
             if i == 0:  # populate history
                 new_history.append(([candidate], candidate_prob))
             else:
