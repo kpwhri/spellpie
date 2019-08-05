@@ -22,4 +22,13 @@ def test_simple_lm(simple_lm, input_sent, expected_sent):
 ])
 def test_simple_lm_prefer_input(simple_lm, input_sent, expected_sent):
     output_sent = viterbi(input_sent.split(), simple_lm)
+    assert output_sent[0][0] == expected_sent.split(), f'Prob: {output_sent[0][1]}'
+
+
+@pytest.mark.parametrize(('input_sent', 'expected_sent'), [
+    ('pot atoes', 'potatoes'),
+    ('eat chee se eat', 'eat cheese eat'),
+])
+def test_simple_lm_separated(simple_lm, input_sent, expected_sent):
+    output_sent = viterbi(input_sent.split(), simple_lm)
     assert output_sent[0][0] == expected_sent.split()

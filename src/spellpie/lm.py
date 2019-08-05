@@ -3,6 +3,9 @@ from collections import defaultdict
 
 import math
 
+SMALL_AMOUNT = 0.000001
+COMBINATION_PENALTY = 6.2  # between 3-6
+
 
 def build_spelling_model(it):
     """
@@ -18,9 +21,9 @@ def build_spelling_model(it):
         for i in range(len(words)):
             unigrams[words[i]] += 1
             if i > 0:
-                bigrams[(words[i-1], words[i])] += 1
+                bigrams[(words[i - 1], words[i])] += 1
             if i > 1:
-                trigrams[(words[i-2], words[i-1], words[i])] += 1
+                trigrams[(words[i - 2], words[i - 1], words[i])] += 1
     lm = TrigramLanguageModel(unigrams, bigrams, trigrams)
     return lm
 
@@ -77,26 +80,65 @@ class SmoothedLanguageModel:
             return self.smoothed_prob
 
 
-def viterbi(sentence, lm):
+def calculate_next_step(wordlist, lm, history,
+                        first_value_increment=SMALL_AMOUNT,
+                        penalty=0.0):
+    new_history = []
+    for ci, candidate in enumerate(wordlist):
+        if not candidate:
+            continue
+        candidate_prob = lm[candidate] - penalty
+        if ci == 0:
+            candidate_prob += SMALL_AMOUNT  # prefer the current word to equal probability options
+        if not history:  # populate history
+            new_history.append(([candidate], candidate_prob))
+        else:
+            best_path = None
+            best_prob = 0
+            for curr_path, prob in history:
+                curr_prob = prob + lm[(curr_path[-1], candidate)] + candidate_prob
+                if not best_path or curr_prob > best_prob:
+                    best_path = curr_path
+                    best_prob = curr_prob
+            new_history.append((best_path + [candidate], best_prob))
+    return new_history
+
+
+def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
     history = []
+    future_history = defaultdict(list)
     for i, word in enumerate(sentence):
-        new_history = []
-        for ci, candidate in enumerate([word] + list(lm.generate_candidates(word))):
-            if not candidate:
-                continue
-            candidate_prob = lm[candidate]
-            if ci == 0:
-                candidate_prob += 0.000001  # prefer the current word to equal probability options
-            if i == 0:  # populate history
-                new_history.append(([candidate], candidate_prob))
-            else:
-                best_path = None
-                best_prob = 0
-                for curr_path, prob in history:
-                    curr_prob = prob + lm[(curr_path[-1], candidate)] + candidate_prob
-                    if not best_path or curr_prob > best_prob:
-                        best_path = curr_path
-                        best_prob = curr_prob
-                new_history.append((best_path + [candidate], best_prob))
+        new_history = calculate_next_step([word] + list(lm.generate_candidates(word)), lm, history)
+        if combine_neighbors and i + 1 < len(sentence):  # candidates from combining words together
+            cword = word + sentence[i + 1]
+            future_history[i + 2] = calculate_next_step([cword] + list(lm.generate_candidates(cword)), lm, history,
+                                                        first_value_increment=0, penalty=penalty)
         history = new_history
+        history += future_history[i+1]
     return sorted(history, key=lambda x: -x[1])
+
+
+def determine_penalty_cutoff(sample_sentences=None, pass_sentences=None, fail_sentences=None,
+                             start=2, end=8, incr=0.1):
+    sample_sentences = ['I like cheese', 'I like potatoes', 'I eat meat', 'I eat tomatoes']
+    input_sentences = ['I like cheese', 'I eat potatos', 'pot atoes', 'drink soda']
+    output_sentences = ['I like cheese', 'I eat potatoes', 'potatoes', 'drink soda']
+    lm = build_spelling_model(sample_sentences)
+    val = start
+    passed = defaultdict(list)
+    while val < end:
+        n_passed = 0
+        results = []
+        for i_s, o_s in zip(input_sentences, output_sentences):
+            res = viterbi(i_s.split(), lm, penalty=val)[0][0]
+            results.append(res)
+            if res == o_s.lower().split():
+                n_passed += 1
+        print(val, results)
+        if n_passed > 0:
+            passed[n_passed].append(val)
+        val += incr
+        if passed and n_passed == 0:
+            break
+    m = max(passed.keys())
+    print(m, passed[m])
