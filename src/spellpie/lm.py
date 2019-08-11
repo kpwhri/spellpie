@@ -36,6 +36,9 @@ class TrigramLanguageModel:
         self.bigram = SmoothedLanguageModel(bigram)
         self.trigram = SmoothedLanguageModel(trigram)
 
+    def smoothed_prob(self, item):
+        return self._get_lm(item).smoothed_prob
+
     def generate_candidates(self, word):
         return self._edits(word)
 
@@ -53,15 +56,21 @@ class TrigramLanguageModel:
         """All edits that are two edits away from `word`."""
         return (e2 for e1 in self._edits(word) for e2 in self._edits(e1))
 
-    def __getitem__(self, item):
+    def _get_lm(self, item):
         if isinstance(item, tuple):
             if len(item) == 1:
-                return self.unigram[item]
+                return self.unigram
             if len(item) == 2:
-                return self.bigram[item]
+                return self.bigram
             if len(item) == 3:
-                return self.trigram[item]
-        return self.unigram[item]
+                return self.trigram
+        return self.unigram
+
+    def __getitem__(self, item):
+        return self._get_lm(item)[item]
+
+    def __contains__(self, item):
+        return item in self._get_lm(item)
 
 
 class SmoothedLanguageModel:
@@ -79,19 +88,68 @@ class SmoothedLanguageModel:
         except KeyError:
             return self.smoothed_prob
 
+    def __contains__(self, item):
+        return item in self.data
 
-def calculate_next_step(wordlist, lm, history,
+
+class History:
+
+    def __init__(self, lm):
+        self.history = defaultdict(dict)  # index is state, list of ([ngram], score)
+        self.index = 0
+        self.lm = lm
+
+    def append(self, item, prob, index=None):
+        if not index:
+            index = self.index
+        self.history[index][item] = prob
+
+    def next(self, index=None):
+        if index:
+            self.index = index
+        self.index += 1
+
+    def best_candidates(self):
+        return [x[0] for x in sorted(self, key=lambda x: -x[1])]
+
+    def best_candidate(self):
+        return self.best_candidates()[0]
+
+    def __bool__(self):
+        return self.index > 0
+
+    def __iter__(self):
+        # can't iterate current index
+        for item, prob in self.history[self.index - 1].items():
+            yield item, prob
+
+    def __getitem__(self, item):
+        try:
+            return self.history[self.index - 1][item]
+        except KeyError:
+            pass
+        prob = 0
+        for i, word in enumerate(item):
+            prob += self.lm[word]
+            if i > 0:
+                prob += self.lm[(item[-1], word)]
+        return prob
+
+
+def calculate_next_step(wordlist, lm, history: History, history_index=None,
                         first_value_increment=SMALL_AMOUNT,
-                        penalty=0.0):
-    new_history = []
+                        penalty=0.0,
+                        require_word_exists=False):
     for ci, candidate in enumerate(wordlist):
         if not candidate:
             continue
+        if require_word_exists and candidate not in lm:
+            continue
         candidate_prob = lm[candidate] - penalty
         if ci == 0:
-            candidate_prob += SMALL_AMOUNT  # prefer the current word to equal probability options
+            candidate_prob += first_value_increment  # prefer the current word to equal probability options
         if not history:  # populate history
-            new_history.append(([candidate], candidate_prob))
+            history.append((candidate,), candidate_prob, index=history_index)
         else:
             best_path = None
             best_prob = 0
@@ -100,22 +158,21 @@ def calculate_next_step(wordlist, lm, history,
                 if not best_path or curr_prob > best_prob:
                     best_path = curr_path
                     best_prob = curr_prob
-            new_history.append((best_path + [candidate], best_prob))
-    return new_history
+            history.append(best_path + (candidate,), best_prob, index=history_index)
 
 
 def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
-    history = []
-    future_history = defaultdict(list)
+    history = History(lm)
     for i, word in enumerate(sentence):
-        new_history = calculate_next_step([word] + list(lm.generate_candidates(word)), lm, history)
+        calculate_next_step([word] + list(lm.generate_candidates(word)), lm, history)
         if combine_neighbors and i + 1 < len(sentence):  # candidates from combining words together
             cword = word + sentence[i + 1]
-            future_history[i + 2] = calculate_next_step([cword] + list(lm.generate_candidates(cword)), lm, history,
-                                                        first_value_increment=0, penalty=penalty)
-        history = new_history
-        history += future_history[i+1]
-    return sorted(history, key=lambda x: -x[1])
+            calculate_next_step([cword] + list(lm.generate_candidates(cword)), lm, history,
+                                first_value_increment=0,
+                                penalty=lm.smoothed_prob(cword),  # still count as 2 words
+                                require_word_exists=True, history_index=history.index + 1)
+        history.next()
+    return history
 
 
 def determine_penalty_cutoff(sample_sentences=None, pass_sentences=None, fail_sentences=None,
