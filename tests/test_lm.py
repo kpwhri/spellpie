@@ -37,7 +37,7 @@ def test_simple_lm_prefer_input(simple_lm, input_sent, expected_sent):
 
 @pytest.mark.parametrize(('input_sent', 'expected_sent'), [
     ('pot atoes', 'potatoes'),
-    ('eat chee se eat', 'eat cheese eat'),
+    ('eat chee se', 'eat cheese'),
 ])
 def test_simple_lm_separated(simple_lm, input_sent, expected_sent):
     history = viterbi(input_sent.split(), simple_lm)

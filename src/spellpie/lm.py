@@ -1,9 +1,10 @@
 import re
+import statistics
 from collections import defaultdict
 
 import math
 
-SMALL_AMOUNT = 0.000001
+SMALL_AMOUNT = 0.1
 COMBINATION_PENALTY = 6.2  # between 3-6
 
 
@@ -39,8 +40,11 @@ class TrigramLanguageModel:
     def smoothed_prob(self, item):
         return self._get_lm(item).smoothed_prob
 
-    def generate_candidates(self, word):
-        return self._edits(word)
+    def borrowed_prob(self, item):
+        return self._get_lm(item).borrowed_prob
+
+    def generate_candidates(self, word, require_word_exists=True):
+        return set(self.edits(word, require_word_exists=require_word_exists))
 
     def _edits(self, word):
         """All edits that are one edit away from `word`."""
@@ -52,9 +56,20 @@ class TrigramLanguageModel:
         inserts = [L + c + R for L, R in splits for c in letters]
         return set(deletes + transposes + replaces + inserts)
 
-    def edits(self, word):
+    def edits(self, word, require_word_exists=True):
         """All edits that are two edits away from `word`."""
-        return (e2 for e1 in self._edits(word) for e2 in self._edits(e1))
+        for e1 in self._edits(word):
+            if require_word_exists:
+                if e1 in self.unigram:
+                    yield e1, 1
+            else:
+                yield e1, 1
+            for e2 in self._edits(e1):
+                if require_word_exists:
+                    if e2 in self.unigram:
+                        yield e2, 2
+                else:
+                    yield e2, 2
 
     def _get_lm(self, item):
         if isinstance(item, tuple):
@@ -75,12 +90,13 @@ class TrigramLanguageModel:
 
 class SmoothedLanguageModel:
 
-    def __init__(self, d):
+    def __init__(self, d, rate=0.5):
         self.data = {}
-        denom = sum(d.values()) + len(d) + 1  # +1 smoothing
-        self.smoothed_prob = math.log(1) - math.log(denom)
+        denom = sum(d.values()) + len(d) + rate  # +1 smoothing
+        self.smoothed_prob = math.log(rate) - math.log(denom)
         for word, freq in d.items():
-            self.data[word] = math.log(freq + 1) - math.log(denom)
+            self.data[word] = math.log(freq + 0.5) - math.log(denom)
+        self.borrowed_prob = statistics.mean(self.data.values())
 
     def __getitem__(self, item):
         try:
@@ -140,21 +156,25 @@ def calculate_next_step(wordlist, lm, history: History, history_index=None,
                         first_value_increment=SMALL_AMOUNT,
                         penalty=0.0,
                         require_word_exists=False):
-    for ci, candidate in enumerate(wordlist):
+    for ci, (candidate, level) in enumerate(wordlist):
         if not candidate:
             continue
         if require_word_exists and candidate not in lm:
             continue
-        candidate_prob = lm[candidate] - penalty
+        candidate_prob = lm[candidate] + penalty
         if ci == 0:
             candidate_prob += first_value_increment  # prefer the current word to equal probability options
         if not history:  # populate history
-            history.append((candidate,), candidate_prob, index=history_index)
+            if history_index == 0:  # initialization
+                history.append((candidate,), candidate_prob, index=history_index)
+            else:  # combined words, add penalty
+                curr_prob = candidate_prob + lm.smoothed_prob(candidate) + (penalty * level)
+                history.append((candidate,), curr_prob, index=history_index)
         else:
             best_path = None
             best_prob = 0
             for curr_path, prob in history:
-                curr_prob = prob + lm[(curr_path[-1], candidate)] + candidate_prob
+                curr_prob = prob + lm[(curr_path[-1], candidate)] + candidate_prob + (penalty * level)
                 if not best_path or curr_prob > best_prob:
                     best_path = curr_path
                     best_prob = curr_prob
@@ -164,13 +184,15 @@ def calculate_next_step(wordlist, lm, history: History, history_index=None,
 def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
     history = History(lm)
     for i, word in enumerate(sentence):
-        calculate_next_step([word] + list(lm.generate_candidates(word)), lm, history)
+        word = word.lower()
+        calculate_next_step([(word, 0)] + list(lm.generate_candidates(word)), lm, history, penalty=-SMALL_AMOUNT)
         if combine_neighbors and i + 1 < len(sentence):  # candidates from combining words together
             cword = word + sentence[i + 1]
-            calculate_next_step([cword] + list(lm.generate_candidates(cword)), lm, history,
+            calculate_next_step(list(lm.generate_candidates(cword)),  # includes cword in output
+                                lm, history,
                                 first_value_increment=0,
-                                penalty=lm.smoothed_prob(cword),  # still count as 2 words
-                                require_word_exists=True, history_index=history.index + 1)
+                                penalty=lm.borrowed_prob(cword),  # still count as 2 words
+                                history_index=history.index + 1)
         history.next()
     return history
 
