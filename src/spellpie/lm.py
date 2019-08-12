@@ -58,12 +58,16 @@ class TrigramLanguageModel:
 
     def edits(self, word, require_word_exists=True):
         """All edits that are two edits away from `word`."""
+        if len(word) <= 2:
+            return
         for e1 in self._edits(word):
             if require_word_exists:
                 if e1 in self.unigram:
                     yield e1, 1
             else:
                 yield e1, 1
+            if len(word) <= 3:
+                continue
             for e2 in self._edits(e1):
                 if require_word_exists:
                     if e2 in self.unigram:
@@ -162,8 +166,8 @@ def calculate_next_step(wordlist, lm, history: History, history_index=None,
         if require_word_exists and candidate not in lm:
             continue
         candidate_prob = lm[candidate] + penalty
-        if ci == 0:
-            candidate_prob += first_value_increment  # prefer the current word to equal probability options
+        # if ci == 0:
+        #     candidate_prob += first_value_increment  # prefer the current word to equal probability options
         if not history:  # populate history
             if history_index == 0:  # initialization
                 history.append((candidate,), candidate_prob, index=history_index)
@@ -185,13 +189,17 @@ def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
     history = History(lm)
     for i, word in enumerate(sentence):
         word = word.lower()
-        calculate_next_step([(word, 0)] + list(lm.generate_candidates(word)), lm, history, penalty=-SMALL_AMOUNT)
+        if word in lm:
+            penalty = lm.borrowed_prob(word)
+        else:
+            penalty = - SMALL_AMOUNT
+        calculate_next_step([(word, 0)] + list(lm.generate_candidates(word)), lm, history, penalty=penalty)
         if combine_neighbors and i + 1 < len(sentence):  # candidates from combining words together
             cword = word + sentence[i + 1]
             calculate_next_step(list(lm.generate_candidates(cword)),  # includes cword in output
                                 lm, history,
                                 first_value_increment=0,
-                                penalty=lm.borrowed_prob(cword),  # still count as 2 words
+                                penalty=lm.borrowed_prob(cword) + penalty,  # still count as 2 words
                                 history_index=history.index + 1)
         history.next()
     return history
