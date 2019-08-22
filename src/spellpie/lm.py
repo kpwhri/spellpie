@@ -10,7 +10,7 @@ SMALL_AMOUNT = 0.1
 COMBINATION_PENALTY = 6.2  # between 3-6
 
 
-def build_spelling_model(it):
+def build_spelling_model(it, split_pat=r'[^a-z]+'):
     """
 
     :param it: iterator of text segments (sentences, documents, etc.)
@@ -19,8 +19,9 @@ def build_spelling_model(it):
     unigrams = defaultdict(int)
     bigrams = defaultdict(int)
     trigrams = defaultdict(int)
+    pat = re.compile(split_pat)
     for sentence in it:
-        words = re.sub(r'[\W_]+', ' ', sentence.lower()).split()
+        words = pat.split(sentence.lower())
         for i in range(len(words)):
             unigrams[words[i]] += 1
             if i > 0:
