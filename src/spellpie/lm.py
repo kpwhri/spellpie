@@ -1,3 +1,5 @@
+import pickle
+import json
 import re
 from collections import defaultdict
 
@@ -18,16 +20,16 @@ def build_spelling_model(it):
         for i in range(len(words)):
             unigrams[words[i]] += 1
             if i > 0:
-                bigrams[(words[i-1], words[i])] += 1
+                bigrams[(words[i - 1], words[i])] += 1
             if i > 1:
-                trigrams[(words[i-2], words[i-1], words[i])] += 1
+                trigrams[(words[i - 2], words[i - 1], words[i])] += 1
     lm = TrigramLanguageModel(unigrams, bigrams, trigrams)
     return lm
 
 
 class TrigramLanguageModel:
 
-    def __init__(self, unigram, bigram, trigram):
+    def __init__(self, unigram=None, bigram=None, trigram=None):
         """Frequencies"""
         self.unigram = SmoothedLanguageModel(unigram)
         self.bigram = SmoothedLanguageModel(bigram)
@@ -60,21 +62,85 @@ class TrigramLanguageModel:
                 return self.trigram[item]
         return self.unigram[item]
 
+    def tojson(self, path=None):
+        def pack_key(key):
+            if isinstance(key, tuple):
+                return '_'.join(key)
+            return key
+
+        data = {
+            f'{i}': {'data': {pack_key(d): v for d, v in x.data.items()},
+                     'smoothed_prob': x.smoothed_prob}
+            for i, x in enumerate((self.unigram, self.bigram, self.trigram), start=1)
+        }
+        if path:
+            with open(path, 'w') as fh:
+                json.dump(data, fh)
+        else:
+            return json.dumps(data)
+
+    def topickle(self, path=None):
+        data = {
+            f'{i}': {'data': x.data, 'smoothed_prob': x.smoothed_prob}
+            for i, x in enumerate((self.unigram, self.bigram, self.trigram), start=1)
+        }
+        if path:
+            with open(path, 'wb') as fh:
+                pickle.dump(data, fh)
+        else:
+            return pickle.dumps(data)
+
+    @classmethod
+    def fromjson(cls, fh):
+        def unpack_key(key):
+            if '_' in key:
+                return tuple('_'.split(key))
+            return key
+
+        with open(fh, 'r') as fh:
+            data = json.load(fh)
+        for ngram in data:
+            data[ngram]['data'] = {unpack_key(k): v for k, v in data[ngram]['data'].items()}
+        return cls.fromdict(data)
+
+    @classmethod
+    def fromdict(cls, data):
+        m = cls()
+        m.unigram = SmoothedLanguageModel.fromdict(data['1'])
+        m.bigram = SmoothedLanguageModel.fromdict(data['2'])
+        m.trigram = SmoothedLanguageModel.fromdict(data['3'])
+        return m
+
+    @classmethod
+    def frompickle(cls, fh):
+        with open(fh, 'rb') as fh:
+            data = pickle.load(fh)
+        return cls.fromdict(data)
+
 
 class SmoothedLanguageModel:
 
     def __init__(self, d):
         self.data = {}
-        denom = sum(d.values()) + len(d) + 1  # +1 smoothing
-        self.smoothed_prob = math.log(1) - math.log(denom)
-        for word, freq in d.items():
-            self.data[word] = math.log(freq + 1) - math.log(denom)
+        self.smoothed_prob = 0
+        if d:
+            denom = sum(d.values()) + len(d) + 1  # +1 smoothing
+            self.smoothed_prob = math.log(1) - math.log(denom)
+            for word, freq in d.items():
+                self.data[word] = math.log(freq + 1) - math.log(denom)
 
     def __getitem__(self, item):
         try:
             return self.data[item]
         except KeyError:
             return self.smoothed_prob
+
+    @classmethod
+    def fromdict(cls, data):
+        m = cls(None)
+        m.data = data['data']
+        m.smoothed_prob = data['smoothed_prob']
+        return m
 
 
 def viterbi(sentence, lm):
