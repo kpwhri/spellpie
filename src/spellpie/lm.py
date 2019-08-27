@@ -13,6 +13,7 @@ COMBINATION_PENALTY = 6.2  # between 3-6
 def build_spelling_model(it, split_pat=r'[^a-z]+'):
     """
 
+    :param split_pat: pattern to separate words in given sentences
     :param it: iterator of text segments (sentences, documents, etc.)
     :return:
     """
