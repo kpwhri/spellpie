@@ -1,3 +1,4 @@
+import os
 import pickle
 import json
 import re
@@ -124,13 +125,13 @@ class TrigramLanguageModel:
             return pickle.dumps(data)
 
     @classmethod
-    def fromjson(cls, fh):
+    def fromjson(cls, path):
         def unpack_key(key):
             if '_' in key:
                 return tuple('_'.split(key))
             return key
 
-        with open(fh, 'r') as fh:
+        with open(path, 'r') as fh:
             data = json.load(fh)
         for ngram in data:
             data[ngram]['data'] = {unpack_key(k): v for k, v in data[ngram]['data'].items()}
@@ -145,8 +146,8 @@ class TrigramLanguageModel:
         return m
 
     @classmethod
-    def frompickle(cls, fh):
-        with open(fh, 'rb') as fh:
+    def frompickle(cls, path):
+        with open(path, 'rb') as fh:
             data = pickle.load(fh)
         return cls.fromdict(data)
 
@@ -192,13 +193,13 @@ class History:
         if not index:
             index = self.index
         self.history[index][item] = prob
+
     @classmethod
     def fromdict(cls, data):
         m = cls(None)
         m.data = data['data']
         m.smoothed_prob = data['smoothed_prob']
         return m
-
 
     def next(self, index=None):
         if index:
@@ -245,8 +246,8 @@ def calculate_next_step(wordlist, lm, history: History, history_index=None,
         # if ci == 0:
         #     candidate_prob += first_value_increment  # prefer the current word to equal probability options
         if not history:  # populate history
-            if history_index == 0:  # initialization
-                history.append((candidate,), candidate_prob, index=history_index)
+            if history_index is None:  # initialization
+                history.append((candidate,), candidate_prob)
             else:  # combined words, add penalty
                 curr_prob = candidate_prob + lm.smoothed_prob(candidate) + (penalty * level)
                 history.append((candidate,), curr_prob, index=history_index)
@@ -264,7 +265,9 @@ def calculate_next_step(wordlist, lm, history: History, history_index=None,
 def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
     history = History(lm)
     for i, word in enumerate(sentence):
-        word = word.lower()
+        word = word.lower().strip()
+        if not word:
+            continue
         if word in lm:
             penalty = lm.borrowed_prob(word)
         else:
@@ -279,6 +282,27 @@ def viterbi(sentence, lm, combine_neighbors=True, penalty=COMBINATION_PENALTY):
                                 history_index=history.index + 1)
         history.next()
     return history
+
+
+def correct_sentence(sentence, lm, **kwargs):
+    return viterbi(sentence, lm, **kwargs).best_candidate()
+
+
+def correct_file(file, lm, encoding='utf8', **kwargs):
+    with open(file, encoding=encoding) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            sentence = re.split(r'\W+', line.strip())
+            new_sent = correct_sentence(sentence, lm, **kwargs)
+            yield ' '.join(new_sent) + '\n'
+
+
+def load_model(model_file):
+    if model_file.endswith('.pkl'):
+        return TrigramLanguageModel.frompickle(model_file)
+    elif model_file.endswith('.json'):
+        return TrigramLanguageModel.fromjson(model_file)
 
 
 def determine_penalty_cutoff(sample_sentences=None, pass_sentences=None, fail_sentences=None,
@@ -305,3 +329,31 @@ def determine_penalty_cutoff(sample_sentences=None, pass_sentences=None, fail_se
             break
     m = max(passed.keys())
     print(m, passed[m])
+
+
+def spellcorrect(model, files, outdir='.', **kwargs):
+    os.makedirs(outdir, exist_ok=True)
+    model = load_model(model)
+    for file in files:
+        basename = os.path.basename(file)
+        with open(os.path.join(outdir, basename), 'w', encoding='utf8') as out:
+            for upd_line in correct_file(file, model, **kwargs):
+                out.write(upd_line)
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(fromfile_prefix_chars='@!')
+    parser.add_argument('model',
+                        help='Spelling model to use')
+    parser.add_argument('files', nargs='+',
+                        help='List files or directories to spell-correct.')
+    parser.add_argument('--outdir', default='.',
+                        help='Directory to place output files.')
+    args = parser.parse_args()
+    spellcorrect(args.model, args.files, args.outdir)
+
+
+if __name__ == '__main__':
+    main()
