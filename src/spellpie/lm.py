@@ -90,6 +90,9 @@ class TrigramLanguageModel:
                 return self.trigram
         return self.unigram
 
+    def sum(self, *items):
+        return sum(self[item] for item in items)
+
     def __getitem__(self, item):
         return self._get_lm(item)[item]
 

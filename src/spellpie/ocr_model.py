@@ -8,6 +8,8 @@ OCR model. When doing OCR, much of the incoming data is likely
 import collections
 import re
 
+from spellpie.lm import TrigramLanguageModel
+
 Word = collections.namedtuple('Word', 'word start end is_word')
 
 
@@ -59,7 +61,7 @@ class Words:
         return self.words[self.curr - 2]
 
 
-def ocr_spell_correct_line(lm, line, cutoff=3):
+def ocr_spell_correct_line(lm: TrigramLanguageModel, line, cutoff=3):
     newline = []
     pat = re.compile(r'[A-Za-z]+')
     words = Words()
@@ -69,11 +71,27 @@ def ocr_spell_correct_line(lm, line, cutoff=3):
         apparent_word = len(word) > cutoff and word in lm
         if apparent_word:
             apparent_word_ctr += 1
-        words.append(Word(word, m.start(), m.end(), apparent_word))
+        words.append(Word(word.lower(), m.start(), m.end(), apparent_word))
     idx = 0
     for word in words:
-        if word in lm or len(word) <= cutoff:
+        if word.word in lm or len(word.word) <= cutoff:
             newline.append(line[idx:word.end])
+            idx = word.end
+        else:  # out-of-vocab long word
+            ppw = words.prev_prev_word().word
+            pw = words.prev_word().word
+            nw = words.next_word().word
+            nnw = words.next_next_word().word
+            best_candidate = None
+            best_score = 0
+            for cand, diff in ((word.word, 0), ) + tuple(lm.generate_candidates(word.word)):
+                score = lm.sum((cand,), (pw, cand), (ppw, pw, cand),
+                               (pw, cand, nw), (cand, nw), (cand, nw, nnw))
+                if not best_candidate or score > best_score:
+                    best_candidate = cand
+                    best_score = score
+            newline.append(line[idx:word.start])
+            newline.append(best_candidate)
             idx = word.end
     newline.append(line[idx:])
     return ''.join(newline)
