@@ -10,7 +10,7 @@ import re
 
 from spellpie.lm import TrigramLanguageModel
 
-Word = collections.namedtuple('Word', 'word start end is_word')
+Word = collections.namedtuple('Word', 'word start end is_word orig_word')
 
 
 class Words:
@@ -71,12 +71,11 @@ def ocr_spell_correct_line(lm: TrigramLanguageModel, line, cutoff=3):
         apparent_word = len(word) > cutoff and word in lm
         if apparent_word:
             apparent_word_ctr += 1
-        words.append(Word(word.lower(), m.start(), m.end(), apparent_word))
+        words.append(Word(word.lower(), m.start(), m.end(), apparent_word, word))
     idx = 0
     for word in words:
         if word.word in lm or len(word.word) <= cutoff:
             newline.append(line[idx:word.end])
-            idx = word.end
         else:  # out-of-vocab long word
             ppw = words.prev_prev_word().word
             pw = words.prev_word().word
@@ -91,7 +90,7 @@ def ocr_spell_correct_line(lm: TrigramLanguageModel, line, cutoff=3):
                     best_candidate = cand
                     best_score = score
             newline.append(line[idx:word.start])
-            newline.append(best_candidate)
-            idx = word.end
+            newline.append(''.join(x if x.lower() == y.lower() else y for x, y in zip(word.orig_word, best_candidate)))
+        idx = word.end
     newline.append(line[idx:])
     return ''.join(newline)
