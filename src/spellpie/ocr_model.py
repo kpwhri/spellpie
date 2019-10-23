@@ -33,7 +33,7 @@ class Words:
         if self.curr is None:
             raise ValueError('No current word. Use for loop to create this context.')
         if self.curr >= len(self.words) - 1:
-            return '<EOS>'
+            return Word('<EOS>', None, None, None, None)
         return self.words[self.curr + 1]
 
     def prev_word(self):
@@ -41,7 +41,7 @@ class Words:
         if self.curr is None:
             raise ValueError('No current word. Use for loop to create this context.')
         if self.curr <= 0:
-            return '<BOS>'
+            return Word('<BOS>', None, None, None, None)
         return self.words[self.curr - 1]
 
     def next_next_word(self):
@@ -49,7 +49,7 @@ class Words:
         if self.curr is None:
             raise ValueError('No current word. Use for loop to create this context.')
         if self.curr >= len(self.words) - 2:
-            return '<EOS>'
+            return Word('<EOS>', None, None, None, None)
         return self.words[self.curr + 2]
 
     def prev_prev_word(self):
@@ -57,7 +57,7 @@ class Words:
         if self.curr is None:
             raise ValueError('No current word. Use for loop to create this context.')
         if self.curr <= 0:
-            return '<BOS>'
+            return Word('<BOS>', None, None, None, None)
         return self.words[self.curr - 2]
 
 
