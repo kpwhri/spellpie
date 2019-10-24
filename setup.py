@@ -20,7 +20,7 @@ setup(name='spellpie',
               [
               ]
       },
-      install_requires=['nltk', ],
+      install_requires=['nltk', 'regex'],
       package_dir={'': 'src'},
       packages=setuptools.find_packages('src'),
       package_data={'spellpie': ['data/*.db']},

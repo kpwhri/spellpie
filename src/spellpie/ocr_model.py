@@ -6,7 +6,7 @@ OCR model. When doing OCR, much of the incoming data is likely
     words).
 """
 import collections
-import re
+import regex as re
 from itertools import zip_longest
 
 from spellpie.lm import TrigramLanguageModel
@@ -71,7 +71,7 @@ class OcrSpellCorrector:
 
     def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3):
         newline = []
-        pat = re.compile(r'[A-Za-z]+')
+        pat = re.compile(r'[\p{Letter}]+')
         words = Words()
         apparent_word_ctr = 0
         for m in pat.finditer(line):
@@ -95,6 +95,7 @@ class OcrSpellCorrector:
                                                                                     noisy_channel=self.noisy_channel)):
                     score = lm.sum(cand, (pw, cand), (ppw, pw, cand),
                                    (pw, cand, nw), (cand, nw), (cand, nw, nnw))
+                    print(cand, diff, score)
                     if not best_candidate or score > best_score:
                         best_candidate = cand
                         best_score = score

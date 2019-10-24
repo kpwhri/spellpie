@@ -21,6 +21,9 @@ def cspy_ocr():
         'the quality of the bowel prep was good',
         'the quality of the bowel preparation was poor',
         'bowel prep was fair',
+        'prior to the procedure',
+        'physical was performed',
+        'history of present illness',
     ])
 
 
@@ -51,6 +54,8 @@ def test_good_pattern(simple_lm, ocr_spell_corrector, line, exp):
 @pytest.mark.parametrize(('line', 'exp'), [
     (r'DTerminaI leum: Normal', r'terminal ileum: Normal'),
     (r'EDTerminaI leum: Normal', r'terminal ileum: Normal'),  # requires noisy channel model
+    (r'Prior to the procedure, a History and Phyéiﬁal wés performed',
+     r'Prior to the procedure, a History and Physical was performed'),
 ])
-def test_good_pattern(cspy_ocr, ocr_spell_corrector, line, exp):
+def test_good_pattern_cspy(cspy_ocr, ocr_spell_corrector, line, exp):
     assert ocr_spell_corrector.spell_correct_line(cspy_ocr, line) == exp
