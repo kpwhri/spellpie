@@ -89,7 +89,7 @@ class OcrSpellCorrector:
                 best_candidate = None
                 best_score = 0
                 for cand, diff in ((word.word, 0), ) + tuple(lm.generate_candidates(word.word)):
-                    score = lm.sum((cand,), (pw, cand), (ppw, pw, cand),
+                    score = lm.sum(cand, (pw, cand), (ppw, pw, cand),
                                    (pw, cand, nw), (cand, nw), (cand, nw, nnw))
                     if not best_candidate or score > best_score:
                         best_candidate = cand
