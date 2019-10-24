@@ -83,7 +83,7 @@ class TrigramLanguageModel:
     def _get_lm(self, item):
         if isinstance(item, tuple):
             if len(item) == 1:
-                return self.unigram
+                raise ValueError('Unigram value should not be a tuple.')
             if len(item) == 2:
                 return self.bigram
             if len(item) == 3:
