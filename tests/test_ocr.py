@@ -50,7 +50,7 @@ def test_good_pattern(simple_lm, ocr_spell_corrector, line, exp):
 
 @pytest.mark.parametrize(('line', 'exp'), [
     (r'DTerminaI leum: Normal', r'terminal ileum: Normal'),
-    # (r'EDTerminaI leum: Normal', r'Terminal ileum: Normal'),
+    (r'EDTerminaI leum: Normal', r'terminal ileum: Normal'),  # requires noisy channel model
 ])
 def test_good_pattern(cspy_ocr, ocr_spell_corrector, line, exp):
     assert ocr_spell_corrector.spell_correct_line(cspy_ocr, line) == exp

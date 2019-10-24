@@ -10,6 +10,7 @@ import re
 from itertools import zip_longest
 
 from spellpie.lm import TrigramLanguageModel
+from spellpie.noise.ocr_channel import OcrNoisyChannel
 
 Word = collections.namedtuple('Word', 'word start end is_word orig_word')
 
@@ -66,6 +67,7 @@ class OcrSpellCorrector:
 
     def __init__(self):
         self.changes = []
+        self.noisy_channel = OcrNoisyChannel()
 
     def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3):
         newline = []
@@ -89,7 +91,8 @@ class OcrSpellCorrector:
                 nnw = words.next_next_word().word
                 best_candidate = None
                 best_score = 0
-                for cand, diff in ((word.word, 0), ) + tuple(lm.generate_candidates(word.word)):
+                for cand, diff in ((word.word, 0), ) + tuple(lm.generate_candidates(word.word,
+                                                                                    noisy_channel=self.noisy_channel)):
                     score = lm.sum(cand, (pw, cand), (ppw, pw, cand),
                                    (pw, cand, nw), (cand, nw), (cand, nw, nnw))
                     if not best_candidate or score > best_score:

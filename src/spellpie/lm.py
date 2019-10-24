@@ -7,6 +7,8 @@ from collections import defaultdict
 
 import math
 
+from spellpie.noise.ocr_channel import NoisyChannel
+
 SMALL_AMOUNT = 0.1
 COMBINATION_PENALTY = 6.2  # between 3-6
 
@@ -48,8 +50,14 @@ class TrigramLanguageModel:
     def borrowed_prob(self, item):
         return self._get_lm(item).borrowed_prob
 
-    def generate_candidates(self, word, require_word_exists=True):
-        return set(self.edits(word, require_word_exists=require_word_exists))
+    def generate_candidates(self, word, require_word_exists=True,
+                            noisy_channel: NoisyChannel = None):
+        edits = set()
+        if noisy_channel:
+            for w in noisy_channel.transform(word):
+                edits |= set(self.edits(w, require_word_exists=require_word_exists))
+        edits |= set(self.edits(word, require_word_exists=require_word_exists))
+        return edits
 
     def _edits(self, word):
         """All edits that are one edit away from `word`."""
