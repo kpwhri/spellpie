@@ -7,6 +7,7 @@ OCR model. When doing OCR, much of the incoming data is likely
 """
 import collections
 import re
+from itertools import zip_longest
 
 from spellpie.lm import TrigramLanguageModel
 
@@ -95,7 +96,8 @@ class OcrSpellCorrector:
                         best_candidate = cand
                         best_score = score
                 newline.append(line[idx:word.start])
-                newword = ''.join(x if x.lower() == y.lower() else y for x, y in zip(word.orig_word, best_candidate))
+                newword = ''.join(x if x.lower() == y.lower() else y
+                                  for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
                 self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100]))
                 newline.append(newword)
             idx = word.end

@@ -13,6 +13,18 @@ def simple_lm():
 
 
 @pytest.fixture()
+def cspy_ocr():
+    return build_spelling_model([
+        'terminal ileum: normal',
+        'colonoscopy was performed without difficulty',
+        'patient tolerated the procedure well',
+        'the quality of the bowel prep was good',
+        'the quality of the bowel preparation was poor',
+        'bowel prep was fair',
+    ])
+
+
+@pytest.fixture()
 def ocr_spell_corrector():
     return OcrSpellCorrector()
 
@@ -34,3 +46,11 @@ def test_garbage_pattern(simple_lm, ocr_spell_corrector, line):
 ])
 def test_good_pattern(simple_lm, ocr_spell_corrector, line, exp):
     assert ocr_spell_corrector.spell_correct_line(simple_lm, line) == exp
+
+
+@pytest.mark.parametrize(('line', 'exp'), [
+    (r'DTerminaI leum: Normal', r'terminal ileum: Normal'),
+    # (r'EDTerminaI leum: Normal', r'Terminal ileum: Normal'),
+])
+def test_good_pattern(cspy_ocr, ocr_spell_corrector, line, exp):
+    assert ocr_spell_corrector.spell_correct_line(cspy_ocr, line) == exp
