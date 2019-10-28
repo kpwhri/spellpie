@@ -6,6 +6,7 @@ OCR model. When doing OCR, much of the incoming data is likely
     words).
 """
 import collections
+
 import regex as re
 from itertools import zip_longest
 
@@ -63,6 +64,15 @@ class Words:
         return self.words[self.curr - 2]
 
 
+def isascii(s):
+    try:
+        s.encode('ascii')
+        return True
+    except UnicodeEncodeError:
+        return False
+    # return len(s) == len(s.encode())
+
+
 class OcrSpellCorrector:
 
     def __init__(self):
@@ -82,28 +92,36 @@ class OcrSpellCorrector:
             words.append(Word(word.lower(), m.start(), m.end(), apparent_word, word))
         idx = 0
         for word in words:
-            if word.word in lm or len(word.word) <= cutoff:
+            if word.word in lm:
                 newline.append(line[idx:word.end])
+            elif len(word.word) <= cutoff:
+                # handle unicode
+                if word.word in lm or isascii(word.word):
+                    newline.append(line[idx:word.end])
+                else:
+                    self.get_best_candidate(lm, word, idx, words, newline, line)
             else:  # out-of-vocab long word
-                ppw = words.prev_prev_word().word
-                pw = words.prev_word().word
-                nw = words.next_word().word
-                nnw = words.next_next_word().word
-                best_candidate = None
-                best_score = 0
-                for cand, diff in ((word.word, 0), ) + tuple(lm.generate_candidates(word.word,
-                                                                                    noisy_channel=self.noisy_channel)):
-                    score = lm.sum(cand, (pw, cand), (ppw, pw, cand),
-                                   (pw, cand, nw), (cand, nw), (cand, nw, nnw))
-                    print(cand, diff, score)
-                    if not best_candidate or score > best_score:
-                        best_candidate = cand
-                        best_score = score
-                newline.append(line[idx:word.start])
-                newword = ''.join(x if x.lower() == y.lower() else y
-                                  for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
-                self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100]))
-                newline.append(newword)
+                self.get_best_candidate(lm, word, idx, words, newline, line)
             idx = word.end
         newline.append(line[idx:])
         return ''.join(newline)
+
+    def get_best_candidate(self, lm, word, idx, words, newline, line):
+        ppw = words.prev_prev_word().word
+        pw = words.prev_word().word
+        nw = words.next_word().word
+        nnw = words.next_next_word().word
+        best_candidate = None
+        best_score = 0
+        for cand, diff in ((word.word, 0),) + tuple(lm.generate_candidates(word.word,
+                                                                           noisy_channel=self.noisy_channel)):
+            score = lm.sum(cand, (pw, cand), (ppw, pw, cand),
+                           (pw, cand, nw), (cand, nw), (cand, nw, nnw))
+            if not best_candidate or score > best_score:
+                best_candidate = cand
+                best_score = score
+        newline.append(line[idx:word.start])
+        newword = ''.join(x if x.lower() == y.lower() else y
+                          for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
+        self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100]))
+        newline.append(newword)

@@ -51,12 +51,12 @@ class TrigramLanguageModel:
         return self._get_lm(item).borrowed_prob
 
     def generate_candidates(self, word, require_word_exists=True,
-                            noisy_channel: NoisyChannel = None):
+                            noisy_channel: NoisyChannel = None, n_edits=2):
         edits = set()
         if noisy_channel:
             for w in noisy_channel.transform(word):
-                edits |= set(self.edits(w, require_word_exists=require_word_exists))
-        edits |= set(self.edits(word, require_word_exists=require_word_exists))
+                edits |= set(self.edits(w, require_word_exists=require_word_exists, n_edits=n_edits))
+        edits |= set(self.edits(word, require_word_exists=require_word_exists, n_edits=n_edits))
         return edits
 
     def _edits(self, word):
@@ -69,7 +69,7 @@ class TrigramLanguageModel:
         inserts = [L + c + R for L, R in splits for c in letters]
         return set(deletes + transposes + replaces + inserts)
 
-    def edits(self, word, require_word_exists=True):
+    def edits(self, word, require_word_exists=True, n_edits=2):
         """All edits that are two edits away from `word`."""
         if len(word) <= 2:
             return
@@ -79,7 +79,7 @@ class TrigramLanguageModel:
                     yield e1, 1
             else:
                 yield e1, 1
-            if len(word) <= 3:
+            if len(word) <= 3 or n_edits < 2:
                 continue
             for e2 in self._edits(e1):
                 if require_word_exists:
