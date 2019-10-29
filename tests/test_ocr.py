@@ -1,7 +1,7 @@
 import pytest
 
 from spellpie.lm import build_spelling_model
-from spellpie.ocr_model import OcrSpellCorrector
+from spellpie.algos.ocr import OcrSpellCorrector
 
 
 @pytest.fixture()

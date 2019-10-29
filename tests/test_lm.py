@@ -1,6 +1,7 @@
 import pytest
 
-from spellpie.lm import build_spelling_model, viterbi
+from spellpie.lm import build_spelling_model
+from spellpie.algos import ViterbiSpellCorrector as vsc
 
 
 @pytest.fixture()
@@ -22,7 +23,7 @@ def compare(history, expected_sent):
     ('I eat potatos', 'i eat potatoes'),
 ])
 def test_simple_lm(simple_lm, input_sent, expected_sent):
-    history = viterbi(input_sent.split(), simple_lm)
+    history = vsc().viterbi(simple_lm, input_sent.split())
     compare(history, expected_sent)
 
 
@@ -31,7 +32,7 @@ def test_simple_lm(simple_lm, input_sent, expected_sent):
     ('drink soda', 'drink soda'),
 ])
 def test_simple_lm_prefer_input(simple_lm, input_sent, expected_sent):
-    history = viterbi(input_sent.split(), simple_lm)
+    history = vsc().viterbi(simple_lm, input_sent.split())
     compare(history, expected_sent)
 
 
@@ -40,5 +41,5 @@ def test_simple_lm_prefer_input(simple_lm, input_sent, expected_sent):
     ('eat chee se', 'eat cheese'),
 ])
 def test_simple_lm_separated(simple_lm, input_sent, expected_sent):
-    history = viterbi(input_sent.split(), simple_lm)
+    history = vsc().viterbi(simple_lm, input_sent.split())
     compare(history, expected_sent)

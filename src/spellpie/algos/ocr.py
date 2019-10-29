@@ -10,6 +10,7 @@ import collections
 import regex as re
 from itertools import zip_longest
 
+from spellpie.algos.base import SpellCorrector
 from spellpie.lm import TrigramLanguageModel
 from spellpie.noise.ocr_channel import OcrNoisyChannel
 
@@ -73,13 +74,13 @@ def isascii(s):
     # return len(s) == len(s.encode())
 
 
-class OcrSpellCorrector:
+class OcrSpellCorrector(SpellCorrector):
 
     def __init__(self):
-        self.changes = []
+        super().__init__()
         self.noisy_channel = OcrNoisyChannel()
 
-    def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3):
+    def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3, tag=None, **kwargs):
         newline = []
         pat = re.compile(r'[\p{Letter}]+')
         words = Words()
@@ -99,14 +100,14 @@ class OcrSpellCorrector:
                 if word.word in lm or isascii(word.word):
                     newline.append(line[idx:word.end])
                 else:
-                    self.get_best_candidate(lm, word, idx, words, newline, line)
+                    self.get_best_candidate(lm, word, idx, words, newline, line, tag=tag)
             else:  # out-of-vocab long word
-                self.get_best_candidate(lm, word, idx, words, newline, line)
+                self.get_best_candidate(lm, word, idx, words, newline, line, tag=tag)
             idx = word.end
         newline.append(line[idx:])
         return ''.join(newline)
 
-    def get_best_candidate(self, lm, word, idx, words, newline, line):
+    def get_best_candidate(self, lm, word, idx, words, newline, line, tag=None):
         ppw = words.prev_prev_word().word
         pw = words.prev_word().word
         nw = words.next_word().word
@@ -123,5 +124,6 @@ class OcrSpellCorrector:
         newline.append(line[idx:word.start])
         newword = ''.join(x if x.lower() == y.lower() else y
                           for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
-        self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100]))
+        if best_candidate != word.word:
+            self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100], tag))
         newline.append(newword)
