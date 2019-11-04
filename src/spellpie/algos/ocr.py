@@ -125,5 +125,43 @@ class OcrSpellCorrector(SpellCorrector):
         newword = ''.join(x if x.lower() == y.lower() else y
                           for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
         if best_candidate != word.word:
-            self.changes.append((word.orig_word, newword, line[word.start - 100:word.end + 100], tag))
+            self.changes.append((word.orig_word, newword, line[max(word.start - 100, 0):word.end + 100], tag))
         newline.append(newword)
+
+
+def main(model_path, input_path, output_path):
+    """
+    Process a single file. This is mainly for testing/debugging.
+    :param model_path:
+    :param input_path:
+    :param output_path:
+    :return:
+    """
+    from spellpie.lm import TrigramLanguageModel
+    lm = TrigramLanguageModel.frompickle(model_path)
+    osc = OcrSpellCorrector()
+    with open(input_path, encoding='utf8') as fh, \
+            open(output_path, 'w', encoding='utf8') as out:
+        for i, line in enumerate(fh):
+            new_line = osc.spell_correct_line(lm, line, tag='sample')
+            out.write(new_line)
+
+    with open('changes.tsv', 'w', encoding='utf8') as out:
+        out.write('orig_word\tnew_word\tcontext\ttag\n')
+        for orig_word, new_word, context, tag in osc.changes:
+            out.write(f'{orig_word}\t{new_word}\t{" ".join(context.split())}\t{tag}\n')
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
+    parser.add_argument('-m', '--model-path', dest='model_path',
+                        help='Path to model pickle file')
+    parser.add_argument('-i', '--input-path', dest='input_path',
+                        help='Path to model pickle file')
+    parser.add_argument('-o', '--output-path', dest='output_path',
+                        help='Path to model pickle file')
+    args = parser.parse_args()
+
+    main(args.model_path, args.input_path, args.output_path)
