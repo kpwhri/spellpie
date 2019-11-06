@@ -5,64 +5,14 @@ OCR model. When doing OCR, much of the incoming data is likely
     which appear to lack any content at all (e.g., no in-dictionary
     words).
 """
-import collections
 
 import regex as re
 from itertools import zip_longest
 
 from spellpie.algos.base import SpellCorrector
+from spellpie.algos.store import Word, Words
 from spellpie.lm import TrigramLanguageModel
 from spellpie.noise.ocr_channel import OcrNoisyChannel
-
-Word = collections.namedtuple('Word', 'word start end is_word orig_word')
-
-
-class Words:
-
-    def __init__(self):
-        self.words = []
-        self.curr = None
-
-    def append(self, obj):
-        self.words.append(obj)
-
-    def __iter__(self):
-        for i, word in enumerate(self.words):
-            self.curr = i
-            yield word
-        self.curr = None
-
-    def next_word(self):
-        """get next word while iterating through Words object"""
-        if self.curr is None:
-            raise ValueError('No current word. Use for loop to create this context.')
-        if self.curr >= len(self.words) - 1:
-            return Word('<EOS>', None, None, None, None)
-        return self.words[self.curr + 1]
-
-    def prev_word(self):
-        """get previous word while iterating through Words object"""
-        if self.curr is None:
-            raise ValueError('No current word. Use for loop to create this context.')
-        if self.curr <= 0:
-            return Word('<BOS>', None, None, None, None)
-        return self.words[self.curr - 1]
-
-    def next_next_word(self):
-        """get next word while iterating through Words object"""
-        if self.curr is None:
-            raise ValueError('No current word. Use for loop to create this context.')
-        if self.curr >= len(self.words) - 2:
-            return Word('<EOS>', None, None, None, None)
-        return self.words[self.curr + 2]
-
-    def prev_prev_word(self):
-        """get previous word while iterating through Words object"""
-        if self.curr is None:
-            raise ValueError('No current word. Use for loop to create this context.')
-        if self.curr <= 0:
-            return Word('<BOS>', None, None, None, None)
-        return self.words[self.curr - 2]
 
 
 def isascii(s):
@@ -80,7 +30,7 @@ class OcrSpellCorrector(SpellCorrector):
         super().__init__()
         self.noisy_channel = OcrNoisyChannel()
 
-    def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3, tag=None, **kwargs):
+    def spell_correct_line(self, lm: TrigramLanguageModel, line, cutoff=3, tag=None, line_idx=0, **kwargs):
         newline = []
         pat = re.compile(r'[\p{Letter}]+')
         words = Words()
@@ -100,14 +50,16 @@ class OcrSpellCorrector(SpellCorrector):
                 if word.word in lm or isascii(word.word):
                     newline.append(line[idx:word.end])
                 else:
-                    self.get_best_candidate(lm, word, idx, words, newline, line, tag=tag)
+                    self.get_best_candidate(lm, word, idx, words, newline, line,
+                                            tag=tag, line_idx=line_idx)
             else:  # out-of-vocab long word
-                self.get_best_candidate(lm, word, idx, words, newline, line, tag=tag)
+                self.get_best_candidate(lm, word, idx, words, newline, line,
+                                        tag=tag, line_idx=line_idx)
             idx = word.end
         newline.append(line[idx:])
         return ''.join(newline)
 
-    def get_best_candidate(self, lm, word, idx, words, newline, line, tag=None):
+    def get_best_candidate(self, lm, word, idx, words, newline, line, tag=None, line_idx=0):
         ppw = words.prev_prev_word().word
         pw = words.prev_word().word
         nw = words.next_word().word
@@ -125,7 +77,7 @@ class OcrSpellCorrector(SpellCorrector):
         newword = ''.join(x if x.lower() == y.lower() else y
                           for x, y in zip_longest(word.orig_word, best_candidate, fillvalue=''))
         if best_candidate != word.word:
-            self.changes.append((word.orig_word, newword, line[max(word.start - 100, 0):word.end + 100], tag))
+            self.add_change(word, line, newword, newline, tag, line_idx)
         newline.append(newword)
 
 
@@ -142,14 +94,15 @@ def main(model_path, input_path, output_path):
     osc = OcrSpellCorrector()
     with open(input_path, encoding='utf8') as fh, \
             open(output_path, 'w', encoding='utf8') as out:
+        length = 0
         for i, line in enumerate(fh):
-            new_line = osc.spell_correct_line(lm, line, tag='sample')
+            new_line = osc.spell_correct_line(lm, line, tag='sample', line_idx=length)
+            length += len(new_line)
             out.write(new_line)
 
     with open('changes.tsv', 'w', encoding='utf8') as out:
-        out.write('orig_word\tnew_word\tcontext\ttag\n')
-        for orig_word, new_word, context, tag in osc.changes:
-            out.write(f'{orig_word}\t{new_word}\t{" ".join(context.split())}\t{tag}\n')
+        for change in osc.export_changes():
+            out.write('\t'.join(str(c) for c in change) + '\n')
 
 
 if __name__ == '__main__':
